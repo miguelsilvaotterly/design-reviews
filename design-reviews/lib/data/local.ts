@@ -2,7 +2,7 @@
 // Data lives in .local-data/db.json, images in .local-data/images/.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Box, Note, NoteStatus, Review, Screen, Viewer } from "@/lib/types";
+import type { BacklogItem, Box, Note, NoteStatus, Review, Screen, Viewer } from "@/lib/types";
 import { countStatus, isEmptyScreen } from "@/lib/types";
 import { newId, slugify, today } from "@/lib/text";
 import { NotFoundError, type ImageKind, type Store } from "./store";
@@ -38,11 +38,19 @@ interface DbNote {
   status: NoteStatus | null;
   statusBy: string | null;
   statusAt: string | null;
+  createdAt?: string | null;
+}
+interface DbVisit {
+  email: string;
+  screenId: string;
+  seenAt: string; // current visit
+  prevSeenAt: string | null; // the visit before it (what "new since" compares against)
 }
 export interface LocalDb {
   reviews: DbReview[];
   screens: DbScreen[];
   notes: DbNote[];
+  visits?: DbVisit[];
 }
 
 let cache: LocalDb | null = null;
@@ -53,7 +61,7 @@ async function load(): Promise<LocalDb> {
   try {
     cache = JSON.parse(await fs.readFile(DB, "utf8")) as LocalDb;
   } catch {
-    cache = { reviews: [], screens: [], notes: [] };
+    cache = { reviews: [], screens: [], notes: [], visits: [] };
   }
   return cache;
 }
@@ -80,7 +88,11 @@ function imageUrl(name: string | null) {
 }
 
 function toNote(n: DbNote): Note {
-  return { ...n, box: n.box ? { ...n.box } : null };
+  return { ...n, box: n.box ? { ...n.box } : null, createdAt: n.createdAt ?? null };
+}
+
+function prevSeen(db: LocalDb, email: string, screenId: string) {
+  return (db.visits ?? []).find((v) => v.email === email && v.screenId === screenId)?.prevSeenAt ?? null;
 }
 
 function renumber(db: LocalDb, screenId: string) {
@@ -91,7 +103,7 @@ function renumber(db: LocalDb, screenId: string) {
 }
 
 export const localStore: Store = {
-  async listReviews() {
+  async listReviews(viewer) {
     const db = await load();
     return db.reviews
       .slice()
@@ -106,6 +118,7 @@ export const localStore: Store = {
           .map((s) => {
             const notes = db.notes.filter((n) => n.screenId === s.id);
             const { done, later } = countStatus(notes);
+            const since = prevSeen(db, viewer.email, s.id);
             return {
               id: s.id,
               reviewId: s.reviewId,
@@ -114,6 +127,7 @@ export const localStore: Store = {
               noteCount: notes.length,
               doneCount: done,
               laterCount: later,
+              newCount: since ? notes.filter((n) => n.createdAt && n.createdAt > since).length : 0,
             };
           }),
       }));
@@ -137,6 +151,38 @@ export const localStore: Store = {
         .sort((a, b) => a.position - b.position)
         .map(toNote),
     };
+  },
+
+  async listBacklog() {
+    const db = await load();
+    const reviews = new Map(db.reviews.map((r) => [r.id, r]));
+    const screens = new Map(db.screens.map((s) => [s.id, s]));
+    return db.notes
+      .filter((n) => n.status !== "done")
+      .map<BacklogItem | null>((n) => {
+        const s = screens.get(n.screenId);
+        const r = s && reviews.get(s.reviewId);
+        if (!s || !r) return null;
+        return { note: toNote(n), screenId: s.id, screenTitle: s.title, reviewId: r.id, reviewName: r.name };
+      })
+      .filter((x): x is BacklogItem => !!x)
+      .sort((a, b) => (a.note.createdAt ?? "").localeCompare(b.note.createdAt ?? ""));
+  },
+
+  markSeen(screenId, viewer, graceMs = 30 * 60 * 1000) {
+    return mutate((db) => {
+      db.visits ??= [];
+      const now = new Date();
+      let v = db.visits.find((x) => x.email === viewer.email && x.screenId === screenId);
+      if (!v) {
+        v = { email: viewer.email, screenId, seenAt: now.toISOString(), prevSeenAt: null };
+        db.visits.push(v);
+        return null;
+      }
+      if (now.getTime() - new Date(v.seenAt).getTime() > graceMs) v.prevSeenAt = v.seenAt;
+      v.seenAt = now.toISOString();
+      return v.prevSeenAt;
+    });
   },
 
   createReview(name) {
@@ -236,6 +282,7 @@ export const localStore: Store = {
         status: null,
         statusBy: null,
         statusAt: null,
+        createdAt: new Date().toISOString(),
       };
       db.notes.push(n);
       return toNote(n);

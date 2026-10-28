@@ -25,7 +25,18 @@ export default async function ScreenPage({
   const { edit } = await searchParams;
   const { store, viewer } = await getContext();
   if (!viewer) redirect(`/login?next=${encodeURIComponent(`/r/${review}/${screen}`)}`);
-  const [reviews, current] = await Promise.all([store.listReviews(), store.getScreen(review, screen)]);
+  const current = await store.getScreen(review, screen);
   if (!current) notFound();
-  return <ReviewApp reviews={reviews} screen={current} viewer={viewer} startEditing={edit === "1" && viewer.role === "editor"} />;
+  // Record the visit first so the sidebar's "new" counts for this screen reset, then list.
+  const lastSeenAt = await store.markSeen(current.id, viewer);
+  const reviews = await store.listReviews(viewer);
+  return (
+    <ReviewApp
+      reviews={reviews}
+      screen={current}
+      viewer={viewer}
+      lastSeenAt={lastSeenAt}
+      startEditing={edit === "1" && viewer.role === "editor"}
+    />
+  );
 }

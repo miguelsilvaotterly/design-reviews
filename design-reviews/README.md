@@ -26,7 +26,7 @@ Set `LOCAL_ROLE=viewer` in `.env.local` to see the developer view. Add `ANTHROPI
 
 ## Hosted setup (Supabase + Vercel)
 
-1. **Create a Supabase project.** Run `supabase/migrations/0001_init.sql` in the SQL editor (or `supabase db push`). It creates the tables, RLS policies, the public `screens` storage bucket and a trigger that refuses sign-ups outside `otterly.ai`.
+1. **Create a Supabase project.** Run the files in `supabase/migrations/` in order in the SQL editor (or `supabase db push`). It creates the tables, RLS policies, the public `screens` storage bucket and a trigger that refuses sign-ups outside `otterly.ai`.
 2. **Auth providers.** In Supabase → Authentication, enable Email (magic link) and, optionally, Google. Add your Vercel URL and `http://localhost:3000` to the redirect allow-list (`/auth/callback`).
 3. **Env vars** (`.env.local` locally, Project Settings → Environment Variables on Vercel):
    ```
@@ -35,6 +35,8 @@ Set `LOCAL_ROLE=viewer` in `.env.local` to see the developer view. Add `ANTHROPI
    NEXT_PUBLIC_SUPABASE_ANON_KEY=…
    SUPABASE_SERVICE_ROLE_KEY=…      # only needed locally, for the seed script
    ANTHROPIC_API_KEY=…
+   FIGMA_TOKEN=…                    # optional, Design image auto-fetch
+   SEED_SECRET=…                    # optional, enables /api/seed
    ALLOWED_EMAIL_DOMAINS=otterly.ai
    ```
 4. **Seed the content** from the handoff (2 reviews, 11 screens, 27 notes, all images):
@@ -86,6 +88,15 @@ docs/handoff/                    the original Claude Design handoff (spec, proto
 | Create / edit / delete reviews, screens, notes, images | ✓ | – |
 
 Enforced twice: in `app/actions.ts` and by Postgres RLS.
+
+## Beyond the prototype
+
+- **Backlog** (`/backlog`): every open and Later note across all reviews, grouped by screen, with Done/Later right there and a deep link back to the marker.
+- **New since your last visit**: notes created after your previous visit to a screen are tagged *New* and counted in the sidebar (per user; visits within 30 minutes count as one).
+- **Markers**: click without dragging for a pin marker; drag a marker to move it; press `1`–`9` to jump to a note; click a marker or a note number to link the two.
+- **Capture from the browser**: the Chrome extension in [`extension/`](extension/README.md) sends the page you're looking at straight into a new screen (`POST /api/capture`).
+- **Figma auto-fetch**: with `FIGMA_TOKEN` set (Figma → Settings → Security → Personal access tokens, read-only on files), pasting a frame link fills the Design image automatically.
+- **Hosted seed**: `GET /api/seed?key=<SEED_SECRET>` imports the handoff content without a terminal (used for the first deploy; safe to re-run).
 
 ## Known gaps vs. the prototype
 

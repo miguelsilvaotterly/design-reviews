@@ -15,6 +15,10 @@ Internal OtterlyAI design-QA tool ("Design Reviews"). Next.js 16 App Router + Ty
 - UI state lives in `components/ReviewApp.tsx` (optimistic updates, re-synced from server props). Note message boxes keep their own draft so background refreshes don't clobber typing.
 - AI prompts in `lib/ai.ts` are verbatim from the prototype. Change them only deliberately; the rewrite must never add details the designer didn't write.
 - Marker boxes are `%` of the production image. Note numbers = `position + 1`, renumbered on delete.
+- Marker boxes with `w: 0, h: 0` are pins (`isPin()` in `lib/types.ts`). Element ids `marker-<noteId>` / `note-<noteId>` are what linking, keyboard jumps and backlog deep links rely on.
+- "New since last visit" comes from `screen_visits.prev_seen_at` (migration 0002); `markSeen` runs on every screen view before `listReviews`.
+- `ReviewApp` wraps mutations in `track()` so a stale server snapshot never overwrites optimistic state mid-flight. Use it for any new mutation.
+- `extension/` is plain MV3 JavaScript (no build). It talks to `app/api/capture/route.ts` with the app's session cookie.
 - No component library, no Tailwind. Plain CSS, Heroicons outline inlined in `components/icons.tsx`.
 
 ## Commands

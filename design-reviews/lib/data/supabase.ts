@@ -1,7 +1,7 @@
 // Supabase-backed store. Runs with the signed-in user's session so RLS applies:
 // editors can write content, every member can set Done / Later.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Box, Note, NoteStatus, Review, Screen, ScreenSummary } from "@/lib/types";
+import type { BacklogItem, Box, Note, NoteStatus, Review, Screen, ScreenSummary } from "@/lib/types";
 import { countStatus } from "@/lib/types";
 import { newId, slugify, today } from "@/lib/text";
 import { NotFoundError, type ImageKind, type Store } from "./store";
@@ -32,6 +32,7 @@ interface NoteRow {
   body: string;
   question: string | null;
   box: Box | null;
+  created_at?: string;
 }
 interface StatusRow {
   note_id: string;
@@ -48,29 +49,37 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
   const publicUrl = (p: string | null) => (p ? sb.storage.from(BUCKET).getPublicUrl(p).data.publicUrl : null);
 
   return {
-    async listReviews() {
-      const [rv, sc, nt, st] = await Promise.all([
+    async listReviews(viewer) {
+      const { data: u } = await sb.auth.getUser();
+      const uid = u.user?.id ?? null;
+      void viewer;
+      const [rv, sc, nt, st, vs] = await Promise.all([
         sb.from("reviews").select("id,name,position").order("position"),
         sb.from("screens").select("id,review_id,title,position").order("position"),
-        sb.from("notes").select("id,screen_id"),
+        sb.from("notes").select("id,screen_id,created_at"),
         sb.from("note_status").select("note_id,status"),
+        uid ? sb.from("screen_visits").select("screen_id,prev_seen_at").eq("user_id", uid) : Promise.resolve({ data: [], error: null }),
       ]);
       if (rv.error) fail(rv.error, "reviews");
       if (sc.error) fail(sc.error, "screens");
       if (nt.error) fail(nt.error, "notes");
       if (st.error) fail(st.error, "note_status");
+      if (vs.error) fail(vs.error, "screen_visits");
+      const prevSeen = new Map<string, string | null>();
+      for (const v of (vs.data ?? []) as { screen_id: string; prev_seen_at: string | null }[]) prevSeen.set(v.screen_id, v.prev_seen_at);
       const statusByNote = new Map<string, NoteStatus>();
       for (const s of st.data as Pick<StatusRow, "note_id" | "status">[]) statusByNote.set(s.note_id, s.status);
-      const notesByScreen = new Map<string, { status: NoteStatus | null }[]>();
-      for (const n of nt.data as Pick<NoteRow, "id" | "screen_id">[]) {
+      const notesByScreen = new Map<string, { status: NoteStatus | null; createdAt: string | null }[]>();
+      for (const n of nt.data as Pick<NoteRow, "id" | "screen_id" | "created_at">[]) {
         const list = notesByScreen.get(n.screen_id) ?? [];
-        list.push({ status: statusByNote.get(n.id) ?? null });
+        list.push({ status: statusByNote.get(n.id) ?? null, createdAt: n.created_at ?? null });
         notesByScreen.set(n.screen_id, list);
       }
       const screensByReview = new Map<string, ScreenSummary[]>();
       for (const s of sc.data as Pick<ScreenRow, "id" | "review_id" | "title" | "position">[]) {
         const notes = notesByScreen.get(s.id) ?? [];
         const { done, later } = countStatus(notes);
+        const since = prevSeen.get(s.id) ?? null;
         const list = screensByReview.get(s.review_id) ?? [];
         list.push({
           id: s.id,
@@ -80,6 +89,7 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
           noteCount: notes.length,
           doneCount: done,
           laterCount: later,
+          newCount: since ? notes.filter((n) => n.createdAt && n.createdAt > since).length : 0,
         });
         screensByReview.set(s.review_id, list);
       }
@@ -101,7 +111,7 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
       if (error) fail(error, "screen");
       if (!s) return null;
       const [nt, st] = await Promise.all([
-        sb.from("notes").select("id,screen_id,position,raw,title,body,question,box").eq("screen_id", screenId).order("position"),
+        sb.from("notes").select("id,screen_id,position,raw,title,body,question,box,created_at").eq("screen_id", screenId).order("position"),
         sb.from("note_status").select("note_id,status,user_email,updated_at"),
       ]);
       if (nt.error) fail(nt.error, "notes");
@@ -121,6 +131,7 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
           status: x?.status ?? null,
           statusBy: x?.user_email ?? null,
           statusAt: x?.updated_at ?? null,
+          createdAt: n.created_at ?? null,
         };
       });
       return {
@@ -134,6 +145,72 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
         position: s.position,
         notes,
       } satisfies Screen;
+    },
+
+    async listBacklog() {
+      const [rv, sc, nt, st] = await Promise.all([
+        sb.from("reviews").select("id,name"),
+        sb.from("screens").select("id,review_id,title"),
+        sb.from("notes").select("id,screen_id,position,raw,title,body,question,box,created_at").order("created_at"),
+        sb.from("note_status").select("note_id,status,user_email,updated_at"),
+      ]);
+      if (rv.error) fail(rv.error, "reviews");
+      if (sc.error) fail(sc.error, "screens");
+      if (nt.error) fail(nt.error, "notes");
+      if (st.error) fail(st.error, "note_status");
+      const reviews = new Map((rv.data as Pick<ReviewRow, "id" | "name">[]).map((r) => [r.id, r]));
+      const screens = new Map((sc.data as Pick<ScreenRow, "id" | "review_id" | "title">[]).map((s) => [s.id, s]));
+      const status = new Map((st.data as StatusRow[]).map((x) => [x.note_id, x]));
+      const out: BacklogItem[] = [];
+      for (const n of nt.data as NoteRow[]) {
+        const x = status.get(n.id);
+        if (x?.status === "done") continue;
+        const s = screens.get(n.screen_id);
+        const r = s && reviews.get(s.review_id);
+        if (!s || !r) continue;
+        out.push({
+          note: {
+            id: n.id,
+            screenId: n.screen_id,
+            position: n.position,
+            raw: n.raw ?? "",
+            title: n.title ?? "",
+            body: n.body ?? "",
+            question: n.question,
+            box: n.box,
+            status: x?.status ?? null,
+            statusBy: x?.user_email ?? null,
+            statusAt: x?.updated_at ?? null,
+            createdAt: n.created_at ?? null,
+          },
+          screenId: s.id,
+          screenTitle: s.title,
+          reviewId: r.id,
+          reviewName: r.name,
+        });
+      }
+      return out;
+    },
+
+    async markSeen(screenId, viewer, graceMs = 30 * 60 * 1000) {
+      void viewer;
+      const { data: u } = await sb.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) return null;
+      const { data: v } = await sb
+        .from("screen_visits")
+        .select("seen_at,prev_seen_at")
+        .eq("user_id", uid)
+        .eq("screen_id", screenId)
+        .maybeSingle<{ seen_at: string; prev_seen_at: string | null }>();
+      const now = new Date();
+      if (!v) {
+        await sb.from("screen_visits").insert({ user_id: uid, screen_id: screenId, seen_at: now.toISOString(), prev_seen_at: null });
+        return null;
+      }
+      const prev = now.getTime() - new Date(v.seen_at).getTime() > graceMs ? v.seen_at : v.prev_seen_at;
+      await sb.from("screen_visits").update({ seen_at: now.toISOString(), prev_seen_at: prev }).eq("user_id", uid).eq("screen_id", screenId);
+      return prev;
     },
 
     async createReview(name) {
@@ -230,6 +307,7 @@ export function createSupabaseStore(sb: SupabaseClient): Store {
         status: null,
         statusBy: null,
         statusAt: null,
+        createdAt: new Date().toISOString(),
       };
     },
 

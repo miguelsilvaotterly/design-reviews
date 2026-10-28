@@ -21,6 +21,7 @@ export interface Note {
   status: NoteStatus | null;
   statusBy: string | null; // email of whoever set the status
   statusAt: string | null; // ISO timestamp
+  createdAt: string | null; // ISO timestamp
 }
 
 export interface Screen {
@@ -50,6 +51,8 @@ export interface ScreenSummary {
   noteCount: number;
   doneCount: number;
   laterCount: number;
+  /** Notes created since this viewer's previous visit to the screen. */
+  newCount: number;
 }
 
 export interface Viewer {
@@ -57,8 +60,13 @@ export interface Viewer {
   role: Role;
 }
 
-export interface Workspace {
-  reviews: Review[];
+/** A note with enough context to list it outside its screen (backlog view). */
+export interface BacklogItem {
+  note: Note;
+  screenId: string;
+  screenTitle: string;
+  reviewId: string;
+  reviewName: string;
 }
 
 export function countStatus(notes: Pick<Note, "status">[]) {
@@ -69,6 +77,11 @@ export function countStatus(notes: Pick<Note, "status">[]) {
     else if (n.status === "later") later++;
   }
   return { done, later };
+}
+
+/** A marker with no area is a pin: a single point on the screenshot. */
+export function isPin(box: Box | null | undefined): box is Box {
+  return !!box && box.w === 0 && box.h === 0;
 }
 
 export function isEmptyScreen(s: Screen) {

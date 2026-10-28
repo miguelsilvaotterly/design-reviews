@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/data";
 import { nameScreen, rewriteNote } from "@/lib/ai";
+import { fetchFigmaFrame } from "@/lib/figma";
 import type { Box, Note, NoteStatus, Screen } from "@/lib/types";
 
 async function editor() {
   const ctx = await getContext();
   if (!ctx.viewer) throw new Error("Not signed in");
   if (ctx.viewer.role !== "editor") throw new Error("Editors only");
-  return ctx;
+  return { store: ctx.store, viewer: ctx.viewer };
 }
 
 async function member() {
@@ -47,10 +48,10 @@ export async function updateScreenAction(screenId: string, patch: Partial<Pick<S
 }
 
 export async function deleteScreenAction(reviewId: string, screenId: string) {
-  const { store } = await editor();
+  const { store, viewer } = await editor();
   await store.deleteScreen(screenId);
   refresh();
-  const reviews = await store.listReviews();
+  const reviews = await store.listReviews(viewer);
   const next = reviews.find((r) => r.id === reviewId)?.screens[0] ?? reviews.flatMap((r) => r.screens)[0];
   redirect(next ? `/r/${next.reviewId}/${next.id}` : "/");
 }
@@ -74,6 +75,22 @@ export async function uploadImageAction(formData: FormData) {
   return url;
 }
 
+/** Pull the frame image from the screen's Figma link into the Design slot.
+ *  Returns the stored image URL, or null when FIGMA_TOKEN isn't configured. */
+export async function fetchFigmaAction(screenId: string, figmaUrl: string): Promise<string | null> {
+  const { store } = await editor();
+  const frame = await fetchFigmaFrame(figmaUrl);
+  if (!frame) return null;
+  const url = await store.setImage(screenId, "design", frame);
+  refresh();
+  return url;
+}
+
+export async function figmaEnabledAction() {
+  await member();
+  return !!process.env.FIGMA_TOKEN;
+}
+
 // --- Notes ----------------------------------------------------------------------
 
 export async function createNoteAction(screenId: string, box: Box | null): Promise<Note> {
@@ -90,10 +107,10 @@ export async function saveRawAction(noteId: string, raw: string) {
 
 /** Save the designer's message, rewrite it into title/body, and auto-name the screen if needed. */
 export async function polishNoteAction(input: { reviewId: string; screenId: string; noteId: string; raw: string }) {
-  const { store } = await editor();
+  const { store, viewer } = await editor();
   const screen = await store.getScreen(input.reviewId, input.screenId);
   if (!screen) throw new Error("Screen not found");
-  const reviews = await store.listReviews();
+  const reviews = await store.listReviews(viewer);
   const review = reviews.find((r) => r.id === input.reviewId);
   const { title, body } = await rewriteNote(input.raw, { review: review?.name ?? "", screen: screen.title });
   await store.updateNote(input.noteId, { raw: input.raw, title, body, question: null });
@@ -112,6 +129,13 @@ export async function polishNoteAction(input: { reviewId: string; screenId: stri
   }
   refresh();
   return { title, body, screenTitle };
+}
+
+/** Move a marker (drag in edit mode). */
+export async function moveNoteAction(noteId: string, box: Box) {
+  const { store } = await editor();
+  await store.updateNote(noteId, { box });
+  refresh();
 }
 
 export async function deleteNoteAction(noteId: string) {

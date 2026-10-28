@@ -9,7 +9,11 @@ import { Shot } from "./Shot";
 
 export interface EditHandlers {
   onTitle: (title: string) => void;
+  onSelect: (note: Note, source: "marker" | "note") => void;
+  onMove: (note: Note, box: Box) => void;
   onFigma: (url: string) => void;
+  /** Fetch the design image from the Figma link now. */
+  onFetchFigma: () => void;
   onImage: (kind: ImageKind, file: File) => void;
   onDraw: (box: Box) => void;
   onAddNote: () => void;
@@ -26,6 +30,8 @@ export function ScreenEdit({
   busy,
   editingIds,
   focusNoteId,
+  activeId,
+  figma,
   h,
 }: {
   screen: Screen;
@@ -35,6 +41,9 @@ export function ScreenEdit({
   editingIds: Set<string>;
   /** Note id whose message box should receive focus. */
   focusNoteId: string | null;
+  activeId: string | null;
+  /** Figma fetch state: idle, in flight, or an error message. */
+  figma: { enabled: boolean; busy: boolean; error: string | null };
   h: EditHandlers;
 }) {
   const titleRef = useRef<HTMLInputElement>(null);
@@ -74,9 +83,18 @@ export function ScreenEdit({
           </p>
           {screen.productionUrl ? (
             <>
-              <Shot src={screen.productionUrl} alt="Production" notes={screen.notes} showStatus={false} onDraw={h.onDraw} />
+              <Shot
+                src={screen.productionUrl}
+                alt="Production"
+                notes={screen.notes}
+                showStatus={false}
+                activeId={activeId}
+                onDraw={h.onDraw}
+                onMove={h.onMove}
+                onSelect={(n) => h.onSelect(n, "marker")}
+              />
               <p className="hint">
-                <span>Drag on the screenshot to add a note.</span>
+                <span>Drag a box or click a spot to add a note · drag a marker to move it.</span>
                 <label>
                   Replace
                   <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && h.onImage("production", e.target.files[0])} />
@@ -108,7 +126,18 @@ export function ScreenEdit({
           <div className="link-in">
             <span>Figma</span>
             <input value={screen.figmaUrl} placeholder="Paste the Figma link for this screen" onChange={(e) => h.onFigma(e.target.value)} aria-label="Figma link" />
+            {figma.enabled && screen.figmaUrl && (
+              <button className="btn" type="button" onClick={h.onFetchFigma} disabled={figma.busy}>
+                {figma.busy ? "Fetching…" : screen.designUrl ? "Refetch" : "Fetch frame"}
+              </button>
+            )}
           </div>
+          {figma.error && <p className="hint" style={{ color: "var(--error)" }}>{figma.error}</p>}
+          {!figma.enabled && !screen.designUrl && screen.figmaUrl && (
+            <p className="hint">
+              <span>Add FIGMA_TOKEN to the deployment and the frame will be fetched automatically.</span>
+            </p>
+          )}
         </div>
 
         <div>
@@ -125,8 +154,15 @@ export function ScreenEdit({
               const k = n.position + 1;
               const open = !n.title || editingIds.has(n.id);
               return (
-                <li key={n.id}>
-                  <span className={`n${n.box ? "" : " gen"}`}>{k}</span>
+                <li key={n.id} id={`note-${n.id}`} className={activeId === n.id ? "active" : ""}>
+                  <span
+                    className={`n${n.box ? "" : " gen"}`}
+                    role={n.box ? "button" : undefined}
+                    title={n.box ? "Show on the screenshot" : undefined}
+                    onClick={n.box ? () => h.onSelect(n, "note") : undefined}
+                  >
+                    {k}
+                  </span>
                   <div>
                     {open ? (
                       <MessageBox note={n} busy={busy.has(n.id)} autoFocus={focusNoteId === n.id} onChange={(v) => h.onRawChange(n, v)} onSave={(v) => h.onPolish(n, v)} />

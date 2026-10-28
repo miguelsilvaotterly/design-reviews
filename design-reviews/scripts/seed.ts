@@ -55,11 +55,11 @@ async function main() {
 
   console.log(`Seeding ${reviewNames.length} reviews, ${screens.length} screens, ${screens.reduce((a, s) => a + s.notes.length, 0)} notes (${LOCAL ? "local" : "supabase"})`);
 
-  if (LOCAL) return seedLocal(screens, reviewNames, reviewId);
-  return seedSupabase(screens, reviewNames, reviewId);
+  if (LOCAL) return seedLocal(screens, reviewNames, reviewId, seed.exported);
+  return seedSupabase(screens);
 }
 
-async function seedLocal(screens: SeedScreen[], reviewNames: string[], reviewId: (n: string) => string) {
+async function seedLocal(screens: SeedScreen[], reviewNames: string[], reviewId: (n: string) => string, seedExported: string) {
   const { localPaths, LOCAL_DIR } = await import("../lib/data/local");
   await fs.mkdir(localPaths.IMAGES, { recursive: true });
 
@@ -108,6 +108,7 @@ async function seedLocal(screens: SeedScreen[], reviewNames: string[], reviewId:
         status: prev?.status ?? null,
         statusBy: prev?.statusBy ?? null,
         statusAt: prev?.statusAt ?? null,
+        createdAt: new Date(`${seedExported}T12:00:00Z`).toISOString(),
       });
     });
   }
@@ -115,57 +116,11 @@ async function seedLocal(screens: SeedScreen[], reviewNames: string[], reviewId:
   console.log(`Wrote ${path.relative(ROOT, localPaths.DB)} and ${db.screens.length} screens' images to ${path.relative(ROOT, LOCAL_DIR)}/images`);
 }
 
-async function seedSupabase(screens: SeedScreen[], reviewNames: string[], reviewId: (n: string) => string) {
+async function seedSupabase(screens: SeedScreen[]) {
   const { createAdminClient } = await import("../lib/supabase/admin");
-  const sb = createAdminClient();
-  const BUCKET = "screens";
-
-  const { error: e1 } = await sb.from("reviews").upsert(reviewNames.map((name, i) => ({ id: reviewId(name), name, position: i })));
-  if (e1) throw new Error(`reviews: ${e1.message}`);
-
-  for (const s of screens) {
-    const upload = async (rel: string, kind: "production" | "design") => {
-      if (!rel) return null;
-      const file = path.join(DATA_DIR, rel);
-      const ext = path.extname(rel).slice(1) || "png";
-      const storagePath = `${s.id}/${kind}.${ext}`;
-      const bytes = await fs.readFile(file);
-      const contentType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
-      const { error } = await sb.storage.from(BUCKET).upload(storagePath, bytes, { contentType, upsert: true });
-      if (error) throw new Error(`upload ${storagePath}: ${error.message}`);
-      return storagePath;
-    };
-    const production_path = await upload(s.production, "production");
-    const design_path = await upload(s.design, "design");
-    const { error } = await sb.from("screens").upsert({
-      id: s.id,
-      review_id: reviewId(s.feature),
-      title: s.title,
-      date: s.date,
-      figma_url: s.figma || "",
-      production_path,
-      design_path,
-      position: s.order,
-    });
-    if (error) throw new Error(`screen ${s.id}: ${error.message}`);
-
-    const notes = s.notes.map((n, i) => ({
-      id: `${s.id}-n${i + 1}`,
-      screen_id: s.id,
-      position: i,
-      raw: n.raw ?? "",
-      title: n.title,
-      body: n.body,
-      question: n.question ?? null,
-      box: n.box ?? null,
-    }));
-    if (notes.length) {
-      const { error: e2 } = await sb.from("notes").upsert(notes);
-      if (e2) throw new Error(`notes ${s.id}: ${e2.message}`);
-    }
-    console.log(`  ${s.feature} / ${s.title} — ${notes.length} notes${production_path ? ", production" : ""}${design_path ? ", design" : ""}`);
-  }
-  console.log("Done.");
+  const { seedSupabase: run } = await import("../lib/seed-supabase");
+  void screens;
+  await run(createAdminClient(), DATA_DIR, (l) => console.log("  " + l));
 }
 
 main().catch((e) => {

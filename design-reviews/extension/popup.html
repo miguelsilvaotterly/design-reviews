@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Send to Design Reviews</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 300px; font: 13px/1.4 Inter, system-ui, sans-serif; color: #0a0a0a; background: #fff; -webkit-font-smoothing: antialiased; }
+  .wrap { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .brand { font-size: 13px; font-weight: 600; letter-spacing: -0.015em; }
+  .brand small { display: block; font-weight: 400; font-size: 11px; color: #737373; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 500; color: #404040; }
+  select, input[type=text] { font: inherit; font-size: 13px; color: #0a0a0a; border: 1px solid #e6e6e6; border-radius: 4px; padding: 7px 8px; background: #fff; width: 100%; }
+  select:focus, input:focus { outline: none; border-color: #E40072; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #404040; }
+  .row input { margin: 0; accent-color: #E40072; }
+  button { font: inherit; font-size: 12px; font-weight: 500; padding: 8px 10px; border-radius: 2px; border: 1px solid #E40072; background: #E40072; color: #fff; cursor: pointer; width: 100%; }
+  button:hover { background: #c80064; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { font-size: 12px; color: #737373; min-height: 16px; }
+  .msg.err { color: #E11D48; }
+  .msg a { color: #E40072; }
+  .foot { font-size: 11px; color: #a3a3a3; display: flex; justify-content: space-between; }
+  .foot a { color: #a3a3a3; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">OtterlyAI <small>Send this page to Design reviews</small></div>
+
+  <div id="signin" class="hidden">
+    <p class="msg err" id="signin-msg"></p>
+    <button id="open-app" type="button">Open Design reviews to sign in</button>
+  </div>
+
+  <form id="form" class="hidden">
+    <label>Review
+      <select id="review"></select>
+    </label>
+    <label id="new-review-label" class="hidden">New review name
+      <input type="text" id="new-review" placeholder="e.g. Billing">
+    </label>
+    <label>Screen name <span style="font-weight:400;color:#a3a3a3">(optional — auto-named from your notes)</span>
+      <input type="text" id="title" placeholder="e.g. Overview">
+    </label>
+    <div class="row"><input type="checkbox" id="fullpage" checked> <span>Full page (scrolls the whole page)</span></div>
+    <button id="go" type="submit">Capture &amp; open</button>
+    <p class="msg" id="msg"></p>
+  </form>
+
+  <div class="foot"><span id="who"></span><a href="#" id="opts">Settings</a></div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

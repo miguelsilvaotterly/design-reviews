@@ -11,6 +11,7 @@ export function Sidebar({
   currentReviewId,
   currentScreenId,
   viewer,
+  backlogCount,
   naming,
   onNavigate,
   onNewScreen,
@@ -21,6 +22,8 @@ export function Sidebar({
   currentReviewId: string | null;
   currentScreenId: string | null;
   viewer: Viewer;
+  /** Open + Later notes across all reviews, for the Backlog link. Omit to hide the link. */
+  backlogCount?: number;
   /** The current screen is being auto-named. */
   naming?: boolean;
   onNavigate?: (href: string) => boolean | void; // return false to cancel
@@ -131,6 +134,7 @@ export function Sidebar({
           >
             <span className="t">{s.title || (on && naming ? "Naming…" : "New screen")}</span>
             <span className="p">
+              {s.newCount > 0 && !on && <span className="new-dot" title={`${s.newCount} new since your last visit`}>{s.newCount}</span>}
               {s.doneCount}/{s.noteCount}
             </span>
             {editor && (
@@ -159,6 +163,10 @@ export function Sidebar({
       )}
 
       <div className="side-actions">
+        <Link href="/backlog" className={`item${currentScreenId === null && currentReviewId === null ? " on" : ""}`} style={{ marginBottom: 6 }}>
+          <span className="t">Backlog</span>
+          {backlogCount !== undefined && <span className="p">{backlogCount}</span>}
+        </Link>
         <div className="side-user" title={viewer.email}>
           {viewer.email} · {viewer.role}
         </div>

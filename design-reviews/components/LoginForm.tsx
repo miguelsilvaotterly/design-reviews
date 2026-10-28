@@ -20,15 +20,6 @@ export function LoginForm({ next, domains, initialError }: { next: string; domai
     setState(error ? { kind: "error", msg: error.message } : { kind: "sent" });
   }
 
-  async function google() {
-    setState({ kind: "busy" });
-    const { error } = await createClient().auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: callback(), queryParams: { hd: domains[0] } },
-    });
-    if (error) setState({ kind: "error", msg: error.message });
-  }
-
   return (
     <form className="login-card" onSubmit={sendLink}>
       <div>
@@ -47,9 +38,6 @@ export function LoginForm({ next, domains, initialError }: { next: string; domai
       />
       <button className="btn primary" type="submit" disabled={state.kind === "busy" || state.kind === "sent"}>
         {state.kind === "sent" ? "Check your inbox" : "Email me a magic link"}
-      </button>
-      <button className="btn" type="button" onClick={google} disabled={state.kind === "busy"}>
-        Continue with Google
       </button>
       {state.kind === "error" && <p className="err">{state.msg}</p>}
       {state.kind === "sent" && <p className="ok">Link sent to {email}. It opens this app signed in.</p>}

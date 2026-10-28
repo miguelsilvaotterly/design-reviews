@@ -89,13 +89,27 @@ h1 { margin: 0; line-height: 29px; font-size: 24px; font-weight: 600; letter-spa
 .shot { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .shot img { display: block; width: 100%; height: auto; border-radius: 8px; }
 .shot.editing { cursor: crosshair; user-select: none; }
-.shot.editing .box { pointer-events: none; }
+.shot.editing .box:not(.movable) { pointer-events: none; }
 .box { position: absolute; border: 1.5px solid var(--primary); border-radius: 3px; background: rgba(228, 0, 114, 0.06); }
 .box.done { border-color: var(--success); background: rgba(16, 185, 129, 0.06); }
 .box.later { border-color: var(--ink-4); border-style: dashed; background: rgba(163, 163, 163, 0.08); }
 .pin { position: absolute; top: 50%; left: -30px; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff; }
 .box.done .pin { background: var(--success); }
 .box.later .pin { background: var(--ink-4); }
+.shot .box[role="button"] { cursor: pointer; }
+/* Pin marker: a point, not an area — the number sits centred on the spot. */
+.box.pin-marker { border: 0; background: transparent; }
+.box.pin-marker .pin { left: -11px; top: 0; }
+/* Highlight when linked from the notes list or the keyboard. */
+.box.active { box-shadow: 0 0 0 3px rgba(228, 0, 114, 0.25); }
+.box.active .pin { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(228, 0, 114, 0.35); }
+.box.done.active { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25); }
+.shot.editing .box.movable { pointer-events: auto; cursor: move; }
+.shot.editing .box.movable .pin { cursor: move; }
+.notes li.active { background: var(--primary-tint); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 4px; }
+.notes .n[role="button"] { cursor: pointer; }
+.keys { font-size: 11px; color: var(--ink-4); margin: 10px 0 0; }
+.keys kbd { font: inherit; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; background: var(--surface); }
 
 /* Notes */
 .notes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
@@ -180,3 +194,23 @@ h1 .in { font-size: 24px; font-weight: 600; letter-spacing: -0.03em; }
   .app { grid-template-columns: 1fr; }
   .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
 }
+
+/* "New since last visit" */
+.new-tag { display: inline-block; margin-left: 8px; vertical-align: 1px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--primary); background: var(--primary-tint); border-radius: 3px; padding: 1px 5px; }
+.meta .new-tag { margin-left: 0; }
+.new-dot { display: inline-block; margin-right: 6px; min-width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 8px; font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); padding: 0 4px; }
+
+/* Backlog */
+.backlog-group { margin: 0 0 28px; }
+.backlog-group h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.backlog-group h2 a { color: inherit; text-decoration: none; }
+.backlog-group h2 a:hover { color: var(--primary); }
+.backlog-group .sub { font-size: 12px; color: var(--ink-3); margin: 0 0 10px; }
+.backlog .notes li { grid-template-columns: 22px 1fr auto; }
+.backlog .notes li .when { font-size: 11px; color: var(--ink-4); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.backlog .notes li.later .later-tag { margin-top: 6px; }
+.filters { display: flex; gap: 6px; margin: 0 0 20px; }
+.filters a { font-size: 12px; font-weight: 500; padding: 5px 10px; border-radius: 2px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
+.filters a:hover { border-color: var(--ink-4); }
+.filters a.on { background: var(--primary-tint); border-color: var(--primary-tint); color: var(--primary); }
+.backlog .notes { max-width: 820px; }
